@@ -1,2 +1,2 @@
-# dd-crm-solutiondeployer
-Crm Dynamics Solution Deployer
+# dd-crm-solutionmanager
+Solution manager for CRM
