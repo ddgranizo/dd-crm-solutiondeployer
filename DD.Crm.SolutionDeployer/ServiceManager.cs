@@ -1,6 +1,8 @@
 ﻿using DD.Crm.SolutionDeployer.Events;
+using DD.Crm.SolutionDeployer.Interfaces;
 using DD.Crm.SolutionDeployer.Models;
 using DD.Crm.SolutionDeployer.Providers;
+using DD.Crm.SolutionDeployer.Services;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using System;
@@ -22,7 +24,7 @@ namespace DD.Crm.SolutionDeployer
 
 
     public delegate void OperationHandler(object sender, OperationEventArgs e);
-    public class ServiceManager
+    public class ServiceManager : IServiceManager
     {
 
         public event OperationHandler OnOperationStarted;
@@ -39,67 +41,37 @@ namespace DD.Crm.SolutionDeployer
             this.Service = CrmProvider.GetService(connection);
         }
 
-
-        public void ExportSolution(List<ExportSolutionReq> requests)
+        public void ExportSolution(ContextService context, string id, ExportSolutionReq request)
         {
-            var totalOperationsNumber = requests.Count;
-            var operationId = Guid.NewGuid();
-            var currentOperation = 0;
-            foreach (var request in requests)
-            {
-                OnOperationStarted?
-                    .Invoke(this,
-                        new OperationEventArgs(OperationType.ExportSolution, operationId, totalOperationsNumber, currentOperation));
-
-                CrmProvider.ExportSolution(Service, request.Managed, request.UniqueName, request.Path);
-
-                OnOperationCompleted?
-                    .Invoke(this,
-                        new OperationEventArgs(OperationType.ImportSolutionAsync, operationId, totalOperationsNumber, currentOperation));
-
-                currentOperation++;
-            }
+            var operationEventArgs = new OperationEventArgs(OperationType.ExportSolution, id);
+            OnOperationStarted?
+                .Invoke(this, operationEventArgs);
+            CrmProvider.ExportSolution(Service, request.Managed, request.UniqueName, request.Path);
+            OnOperationCompleted?
+                .Invoke(this, operationEventArgs);
         }
 
-
-
-        public Guid ImportSolutionsAsync(List<ImportSolutionReq> requests)
+        public void ImportSolutionsAsync(ContextService context, string id, ImportSolutionReq request)
         {
-
-            var totalOperationsNumber = requests.Count;
-            var operationId = Guid.NewGuid();
-            var currentOperation = 0;
-            foreach (var request in requests)
-            {
-                OnOperationStarted?
-                    .Invoke(this,
-                        new OperationEventArgs(OperationType.ImportSolutionAsync, operationId, totalOperationsNumber, currentOperation));
-                var data = File.ReadAllBytes(request.Path);
-                var jobId = CrmProvider
-                        .ImportSolutionAsync(
-                            Service, 
-                            data,
-                            request.OverwriteUnmanagedCustomizations,
-                            request.MigrateAsHold,
-                            request.PublishWorkflows);
-                WaitAsnycOperation(jobId);
-
-                OnOperationCompleted?
-                    .Invoke(this,
-                        new OperationEventArgs(OperationType.ImportSolutionAsync, operationId, totalOperationsNumber, currentOperation));
-
-                currentOperation++;
-            }
-            return Guid.NewGuid();
+            var operationEventArgs = new OperationEventArgs(OperationType.ImportSolutionAsync, id);
+            OnOperationStarted?
+                .Invoke(this, operationEventArgs);
+            var data = File.ReadAllBytes(request.Path);
+            var jobId = CrmProvider
+                    .ImportSolutionAsync(
+                        Service,
+                        data,
+                        request.OverwriteUnmanagedCustomizations,
+                        request.MigrateAsHold,
+                        request.PublishWorkflows);
+            WaitAsnycOperation(jobId);
+            OnOperationCompleted?
+                .Invoke(this, operationEventArgs);
         }
-
-
-
-
 
         private void WaitAsnycOperation(Guid jobId)
         {
-            int timeMaxForTimeOut = 1000 * 60 * 200; 
+            int timeMaxForTimeOut = 1000 * 60 * 200;
             DateTime end = DateTime.Now.AddMilliseconds(timeMaxForTimeOut);
             bool completed = false;
             while (!completed && end >= DateTime.Now)
@@ -120,7 +92,7 @@ namespace DD.Crm.SolutionDeployer
                     {
                         throw new Exception(
                                 string.Format(
-                                    "Solution Import Failed: {0} {1}",
+                                    "Async oepration failed: {0} {1}",
                                     statusCode,
                                     asyncOperation.GetAttributeValue<string>("message")));
                     }
